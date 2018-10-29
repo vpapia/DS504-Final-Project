@@ -1,0 +1,40 @@
+# Read the master CSV file
+df = spark.read.load("s3://vinny-ds504-finalproject/master.txt", format="csv", sep=";", inferSchema="true", header="true")
+
+# Import the pyspark ML Tokenizer package to break up Intermediate Proof Steps
+# into individual tokens
+from pyspark.ml.feature import Tokenizer
+
+# Isolate the Intermediate Proof Steps only
+intermed_only = df['depen_bin'] == 0
+df_intermed_only = df[intermed_only]
+df_intermed_only = df_intermed_only[['step_token', 'useful_bin']]
+
+# Tokenize the Intermediate Proof Steps, write results to 'words'
+tokenizer = Tokenizer(inputCol="step_token", outputCol="words")
+
+tokenized = tokenizer.transform(df_intermed_only)
+
+# Import the pyspark ML CountVectorizer package to vectorize the tokenized
+# Intermediate Proof Steps
+from pyspark.ml.feature import CountVectorizer
+
+# Vectorize the tokenized Intermediate Proof Steps
+cv = CountVectorizer(inputCol="words", outputCol="features")
+
+model = cv.fit(tokenized)
+
+result = model.transform(tokenized)
+
+# Import the pyspark ML PCA package to run PCA on the vectorized Intermediate
+# Proof Steps
+from pyspark.ml.feature import PCA
+
+# Run 2 and 3 principal components PCA (by changing the value of k) on the
+# vectorized Intermediate Proof Steps, save the output to an AWS S3 bucket
+pca = PCA(k=3, inputCol="features", outputCol="pcaFeatures")
+model = pca.fit(result)
+result_pca = model.transform(result).select("pcaFeatures", "useful_bin")
+result_pca.show()
+pca_rdd = result_pca.rdd
+pca_rdd.saveAsTextFile("s3://vinny-ds504-finalproject/pcathreebins")
